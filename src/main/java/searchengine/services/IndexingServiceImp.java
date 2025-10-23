@@ -11,6 +11,7 @@ import searchengine.repositories.SiteRepository;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.concurrent.ForkJoinPool;
 
 @Service
 @RequiredArgsConstructor
@@ -21,24 +22,53 @@ public class IndexingServiceImp implements IndexingService {
     private final PageRepository pageRepository;
     private final PageParserImp pageParserImp;
 
-    private boolean isIndexing = false;
+    private volatile boolean isIndexing = false;
+    private ForkJoinPool forkJoinPool;
 
     @Override
-    public boolean isIndexingStart() {
+    public boolean startIndexing() {
         if (isIndexing) {
             return false;
         }
         isIndexing = true;
-        // Код индексации
+        forkJoinPool = new ForkJoinPool();
 
-        try {
-            for (Site site : sitesList.getSites()) {
-                indexSite(site);
+
+        new Thread(() -> {
+            try {
+                for (Site site : sitesList.getSites()) {
+                    if (!isIndexing) {
+                        break;
+                    }
+                    forkJoinPool.execute(() -> indexSite(site));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-            return true;
-        } finally {
-            isIndexing = false;
+        }).start();
+
+        return true;
+    }
+
+    @Override
+    public boolean stopIndexing() {
+        if (!isIndexing) {
+            return false;
         }
+        isIndexing = false;
+        if (forkJoinPool != null) {
+            forkJoinPool.shutdownNow();
+        }
+
+        for (Site site : sitesList.getSites()) {
+            SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl()).orElseThrow();
+            if (siteEntity.getStatus().equals(StatusType.INDEXING)) {
+                siteEntity.setStatus(StatusType.FAILED);
+                siteEntity.setLastError("Индексация прервана пользователем");
+                siteRepository.save(siteEntity);
+            }
+        }
+        return true;
     }
 
     private void indexSite(Site site) {
@@ -55,11 +85,18 @@ public class IndexingServiceImp implements IndexingService {
             siteEntity = siteRepository.findByUrl(site.getUrl()).orElseThrow();
 
             // 4. Индексируем страницу.
-            pageParserImp.indexSitePages(siteEntity);
+            siteEntity.setStatus(StatusType.INDEXING);
+            pageParserImp.indexSitePages(siteEntity, forkJoinPool);
 
+            // ПРОВЕРЯТЬ IS INDEXING
             // После успешного обхода ставим статус.
-            siteEntity.setStatus(StatusType.INDEXED);
-            siteEntity.setStatusTime(LocalDateTime.now());
+            if (isIndexing) {
+                siteEntity.setStatus(StatusType.INDEXED);
+                siteEntity.setStatusTime(LocalDateTime.now());
+            } else {
+                siteEntity.setStatus(StatusType.FAILED);
+                siteEntity.setLastError("Индексация прервана пользователем");
+            }
             siteRepository.save(siteEntity);
 
 
@@ -71,6 +108,7 @@ public class IndexingServiceImp implements IndexingService {
                 siteEntity.setStatusTime(LocalDateTime.now());
                 siteRepository.save(siteEntity);
             }
+            e.printStackTrace();
         }
     }
 
@@ -78,10 +116,9 @@ public class IndexingServiceImp implements IndexingService {
         Optional<SiteEntity> site = siteRepository.findByUrl(siteUrl);
         if (site.isPresent()) {
             SiteEntity foundSite = site.get();
-            pageRepository.deleteAllBySiteId(foundSite.getId());
+            pageRepository.deleteAllBySiteId(foundSite);
             siteRepository.delete(foundSite);
         }
-        return;
     }
 
     private void saveSite(String siteUrl, String siteName) {
@@ -100,25 +137,4 @@ public class IndexingServiceImp implements IndexingService {
         }
         siteRepository.save(siteEntity);
     }
-
-//    private void indexPage(String siteUrl, SiteEntity siteEntity) {
-//        try {
-//            Document doc = Jsoup.connect(siteUrl).get();
-//            int statusCode = Jsoup.connect(siteUrl).execute().statusCode();
-//            String path = siteUrl.replace(siteEntity.getUrl(), "");
-//
-//            PageEntity pageEntity = new PageEntity();
-//            pageEntity.setSiteId(siteEntity);
-//            pageEntity.setContent(doc.html());
-//            pageEntity.setCode(statusCode);
-//            pageEntity.setPath(path);
-//
-//            pageRepository.save(pageEntity);
-//        } catch (IOException e) {
-//            siteEntity.setStatus(StatusType.FAILED);
-//            siteEntity.setLastError("Ошибка загрузки: " + e.getMessage());
-//            siteEntity.setStatusTime(LocalDateTime.now());
-//            siteRepository.save(siteEntity);
-//        }
-//    }
 }

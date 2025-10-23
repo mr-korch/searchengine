@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import searchengine.dto.responces.Response;
-import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
 import searchengine.services.StatisticsService;
@@ -24,15 +23,27 @@ public class ApiController {
         return ResponseEntity.ok(statisticsService.getStatistics());
     }
 
-    @GetMapping("startIndexing")
+    @GetMapping("/startIndexing")
     public ResponseEntity<?> startIndexing() {
 
-        boolean isStarted = indexingService.isIndexingStart();
+        boolean isStarted = indexingService.startIndexing();
 
         if (isStarted) {
             return ResponseEntity.ok(new Response((true)));
         } else {
             return ResponseEntity.badRequest().body(new Response(false, "Индексация уже запущена"));
+        }
+    }
+
+    @GetMapping("/stopIndexing")
+    public ResponseEntity<?> stopIndexing() {
+
+        boolean isStopped = indexingService.stopIndexing();
+
+        if (isStopped) {
+            return ResponseEntity.ok(new Response((true)));
+        } else {
+            return ResponseEntity.badRequest().body(new Response(false, "Индексация не запущена"));
         }
     }
 

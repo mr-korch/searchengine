@@ -4,5 +4,7 @@ import org.springframework.stereotype.Service;
 
 public interface IndexingService {
 
-    boolean isIndexingStart();
+    boolean startIndexing();
+
+    boolean stopIndexing();
 }
