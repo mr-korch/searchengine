@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -21,6 +22,7 @@ import java.util.concurrent.RecursiveAction;
 @RequiredArgsConstructor
 public class PageParserImp {
 
+    private final LemmasCounter lemmasCounter;
     private final PageRepository pageRepository;
     private final Set<String> visited = ConcurrentHashMap.newKeySet();
 
@@ -46,7 +48,7 @@ public class PageParserImp {
             if (visited.contains(url)) return;
             visited.add(url);
 
-            if (pageRepository.findByPath(url).isPresent()) {
+            if (pageRepository.findByPathAndSiteId(path, siteEntity).isPresent()) {
                 return;
             }
 
@@ -56,46 +58,46 @@ public class PageParserImp {
 
             try {
                 Thread.sleep(500 + (int) (Math.random() * 50));
-                Document document = Jsoup.connect(url)
-                        .userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
-                        .ignoreContentType(true)
-                        .referrer("http://www.google.com")
-                        .get();
+                Connection.Response response = Jsoup.connect(url)
+                        .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
+                        .referrer("https://www.google.com")
+                        .ignoreHttpErrors(true)
+                        .followRedirects(true)
+                        .execute();
 
-                pageEntity.setCode(200);
-                pageEntity.setContent(document.outerHtml());
+                pageEntity.setCode(response.statusCode());
 
-                pageRepository.save(pageEntity);
+                if (response.statusCode() == 200) {
+                    Document document = response.parse();
+                    pageEntity.setContent(document.outerHtml());
+                    pageRepository.save(pageEntity);
+                    lemmasCounter.countLemmas(document, siteEntity, pageEntity);
+                    Elements elements = document.select("a[href]");
+                    Set<LinkRecursiveAction> actionSet = new HashSet<>();
 
-                Elements elements = document.select("a[href]");
-                Set<LinkRecursiveAction> actionSet = new HashSet<>();
-
-                for (Element element : elements) {
-                    String link = element.absUrl("href");
-                    if (link.isEmpty()) {
-                        link = siteEntity.getUrl() + element.attr("href");
+                    for (Element element : elements) {
+                        String link = element.absUrl("href");
+                        if (link.isEmpty()) {
+                            link = siteEntity.getUrl() + element.attr("href");
+                        }
+                        if (link.startsWith(siteEntity.getUrl())
+                                && !link.contains("#")
+                                && !link.contains("?")
+                                && !link.contains(".webp")
+                                && link.matches("https?://.+")) {
+                            LinkRecursiveAction action = new LinkRecursiveAction(link, siteEntity);
+                            action.fork();
+                            actionSet.add(action);
+                        }
                     }
-                    if (link.startsWith(siteEntity.getUrl())
-                            && !link.contains("#")
-                            && !link.contains("?")
-                            && link.matches("https?://.+")) {
-                        LinkRecursiveAction action = new LinkRecursiveAction(link, siteEntity);
-                        action.fork();
-                        actionSet.add(action);
+                    for (LinkRecursiveAction action : actionSet) {
+                        action.join();
                     }
                 }
-
-                for (LinkRecursiveAction action : actionSet) {
-                    action.join();
-                }
-
-//            } catch (IOException e) {
-//                System.err.println("Ошибка. Пропущена страница: " + url);
-//            }
             } catch (IOException e) {
                 // сетевые проблемы
                 System.err.println("Ошибка загрузки: " + url + " — " + e.getMessage());
-                pageEntity.setCode(404);
+                pageEntity.setCode(500);
                 pageEntity.setContent("");
                 savePageAfterError(pageEntity);
 
@@ -109,7 +111,7 @@ public class PageParserImp {
         }
     }
 
-    private void savePageAfterError(PageEntity pageEntity) {
+    public void savePageAfterError(PageEntity pageEntity) {
         try {
             pageRepository.save(pageEntity);
         } catch (Exception e) {

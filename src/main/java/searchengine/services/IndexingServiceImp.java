@@ -1,15 +1,20 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Connection;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
-import searchengine.model.SiteEntity;
-import searchengine.model.StatusType;
+import searchengine.model.*;
+import searchengine.repositories.IndexRepository;
+import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
 
@@ -20,7 +25,10 @@ public class IndexingServiceImp implements IndexingService {
     private final SitesList sitesList;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
+    private final LemmaRepository lemmaRepository;
+    private final IndexRepository indexRepository;
     private final PageParserImp pageParserImp;
+    private final LemmasCounter lemmasCounter;
 
     private volatile boolean isIndexing = false;
     private ForkJoinPool forkJoinPool;
@@ -69,6 +77,97 @@ public class IndexingServiceImp implements IndexingService {
             }
         }
         return true;
+    }
+
+    @Override
+    public boolean indexPage(String url) {
+        Optional<SiteEntity> optionalSite = siteRepository.findAll()
+                .stream()
+                .filter(site -> url.startsWith(site.getUrl()))
+                .findFirst();
+
+        SiteEntity siteEntity;
+
+        if (optionalSite.isEmpty()) {
+            Optional<Site> optionalSiteConfig = sitesList.getSites()
+                    .stream()
+                    .filter((site -> url.startsWith(site.getUrl())))
+                    .findFirst();
+
+            if (optionalSiteConfig.isEmpty()) {
+                return false;
+            }
+
+            Site configSite = optionalSiteConfig.get();
+            siteEntity = new SiteEntity();
+            siteEntity.setUrl(configSite.getUrl());
+            siteEntity.setName(configSite.getName());
+            siteEntity.setStatus(StatusType.INDEXING);
+            siteEntity.setStatusTime(LocalDateTime.now());
+            siteRepository.save(siteEntity);
+        } else {
+            siteEntity = optionalSite.get();
+        }
+
+        String path = url.replace(siteEntity.getUrl(), "");
+        PageEntity pageEntity;
+        Optional<PageEntity> optionalPage = pageRepository.findByPathAndSiteId(path, siteEntity);
+
+        if (optionalPage.isPresent()) {
+            pageEntity = optionalPage.get();
+            List<IndexEntity> indexEntityList = indexRepository.findAllByPageId(pageEntity);
+            for (IndexEntity index : indexEntityList) {
+                LemmaEntity lemma = index.getLemmaId();
+                lemma.setFrequency(lemma.getFrequency() - 1);
+                if (lemma.getFrequency() == 0) {
+                    lemmaRepository.delete(lemma);
+                } else {
+                    lemmaRepository.save(lemma);
+                }
+                indexRepository.delete(index);
+            }
+            pageRepository.delete(pageEntity);
+        } else {
+            pageEntity = new PageEntity();
+            pageEntity.setSiteId(siteEntity);
+            pageEntity.setPath(path);
+        }
+
+        Connection.Response response;
+        try {
+            response = Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
+                    .referrer("https://www.google.com")
+                    .ignoreHttpErrors(true)
+                    .followRedirects(true)
+                    .execute();
+
+            int statusCode = response.statusCode();
+            pageEntity.setCode(statusCode);
+
+            Document document = null;
+            if (statusCode == 200) {
+                document = response.parse();
+                pageEntity.setContent(document.outerHtml());
+            } else {
+                pageEntity.setContent("");
+            }
+
+            pageRepository.save(pageEntity);
+
+            if (statusCode == 200) {
+                lemmasCounter.countLemmas(document, siteEntity, pageEntity);
+            }
+
+            return true;
+        } catch (Exception e) {
+            // сетевые проблемы
+            System.err.println("Ошибка загрузки: " + url + " — " + e.getMessage());
+            pageEntity.setCode(500);
+            pageEntity.setContent("");
+            pageRepository.save(pageEntity);
+            return false;
+        }
     }
 
     private void indexSite(Site site) {
