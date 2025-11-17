@@ -35,12 +35,13 @@ public class IndexingServiceImp implements IndexingService {
 
     @Override
     public boolean startIndexing() {
+
         if (isIndexing) {
             return false;
         }
         isIndexing = true;
         forkJoinPool = new ForkJoinPool();
-
+        pageParserImp.clearVisited();
 
         new Thread(() -> {
             try {
@@ -110,6 +111,9 @@ public class IndexingServiceImp implements IndexingService {
         }
 
         String path = url.replace(siteEntity.getUrl(), "");
+        if (path.isEmpty()) {
+            path = "/";
+        }
         PageEntity pageEntity;
         Optional<PageEntity> optionalPage = pageRepository.findByPathAndSiteId(path, siteEntity);
 
@@ -170,6 +174,11 @@ public class IndexingServiceImp implements IndexingService {
         }
     }
 
+    @Override
+    public boolean isIndexing() {
+        return isIndexing;
+    }
+
     private void indexSite(Site site) {
         SiteEntity siteEntity = null;
 
@@ -215,6 +224,8 @@ public class IndexingServiceImp implements IndexingService {
         Optional<SiteEntity> site = siteRepository.findByUrl(siteUrl);
         if (site.isPresent()) {
             SiteEntity foundSite = site.get();
+            indexRepository.deleteAllByPageId_SiteId(foundSite);
+            lemmaRepository.deleteAllBySiteId(foundSite);
             pageRepository.deleteAllBySiteId(foundSite);
             siteRepository.delete(foundSite);
         }

@@ -9,4 +9,6 @@ public interface IndexingService {
     boolean stopIndexing();
 
     boolean indexPage(String pageLink);
+
+    boolean isIndexing();
 }

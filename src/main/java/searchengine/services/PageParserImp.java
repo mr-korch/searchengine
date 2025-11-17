@@ -118,4 +118,8 @@ public class PageParserImp {
             System.err.println("Ошибка при сохранении страницы " + pageEntity.getPath() + ": " + e.getMessage());
         }
     }
+
+    public void clearVisited(){
+        visited.clear();
+    }
 }

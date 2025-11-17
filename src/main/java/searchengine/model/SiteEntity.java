@@ -22,7 +22,7 @@ public class SiteEntity {
     private StatusType status;
 
     @Column(name = "status_time", nullable = false)
-    private LocalDateTime statusTime ;
+    private LocalDateTime statusTime;
 
     @Column(name = "last_error")
     private String lastError;
