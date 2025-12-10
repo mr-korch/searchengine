@@ -179,6 +179,16 @@ public class IndexingServiceImp implements IndexingService {
         return isIndexing;
     }
 
+    @Override
+    public boolean isSiteIndexed(String url) {
+        Optional<SiteEntity> optionalSite = siteRepository.findByUrl(url);
+        if (optionalSite.isEmpty()) {
+            return false;
+        } else {
+            return optionalSite.get().getStatus() == StatusType.INDEXED;
+        }
+    }
+
     private void indexSite(Site site) {
         SiteEntity siteEntity = null;
 

@@ -1,0 +1,16 @@
+package searchengine.dto.responces;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class SearchResult {
+    private String site;
+    private String siteName;
+    private String uri;
+    private String snippet;
+    private double relevance;
+}

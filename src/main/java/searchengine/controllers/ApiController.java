@@ -2,10 +2,14 @@ package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import searchengine.dto.responces.Response;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
+import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
 
 @RestController
@@ -15,6 +19,7 @@ public class ApiController {
 
     private final StatisticsService statisticsService;
     private final IndexingService indexingService;
+    private final SearchService searchService;
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -56,6 +61,22 @@ public class ApiController {
             return ResponseEntity.badRequest().body(new Response(false, "Данная страница находится за пределами сайтов, \n" +
                     "указанных в конфигурационном файле"));
         }
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<?> searchByQuery(
+            @RequestParam String query,
+            @RequestParam(required = false) String site,
+            @RequestParam(defaultValue = "0") Integer offset,
+            @RequestParam(defaultValue = "20") Integer limit) {
+
+        if (query == null || query.isBlank()) {
+            return ResponseEntity.badRequest().body(new Response(false, "Задан пустой поисковый запрос"));
+        }
+        if (site != null && !indexingService.isSiteIndexed(site)) {
+            return ResponseEntity.badRequest().body(new Response(false, "Указанная страница не найдена"));
+        }
+        return ResponseEntity.ok(searchService.search(query, site));
     }
 
 }

@@ -1,7 +1,5 @@
 package searchengine.services;
 
-import org.springframework.stereotype.Service;
-
 public interface IndexingService {
 
     boolean startIndexing();
@@ -11,4 +9,6 @@ public interface IndexingService {
     boolean indexPage(String pageLink);
 
     boolean isIndexing();
+
+    boolean isSiteIndexed(String url);
 }
