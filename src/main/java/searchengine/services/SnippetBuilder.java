@@ -16,13 +16,12 @@ public class SnippetBuilder {
             return "";
         }
 
-        // 1. Чистый текст
         String text = Jsoup.parse(html).text();
         if (text.isBlank()) {
             return "";
         }
 
-        String textWords[] = text.split("\\s+");
+        String[] textWords = text.split("\\s+");
         String lemmaFromText;
         LemmaFinder lemmaFinder = null;
         try {
@@ -31,7 +30,6 @@ public class SnippetBuilder {
             e.printStackTrace();
         }
         int pos = -1;
-        String lastWord;
         for (String word : textWords) {
             Set<String> set = lemmaFinder.getLemmaSet(word);
             if (!set.isEmpty()) {
@@ -44,7 +42,6 @@ public class SnippetBuilder {
                 }
             }
         }
-
         if (pos == -1) return "";
 
         int start = Math.max(0, pos - SNIPPET_RADIUS);

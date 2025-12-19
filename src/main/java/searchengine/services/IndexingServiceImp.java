@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +30,8 @@ public class IndexingServiceImp implements IndexingService {
     private final IndexRepository indexRepository;
     private final PageParserImp pageParserImp;
     private final LemmasCounter lemmasCounter;
+    private final SiteCleanupService siteCleanupService;
+
 
     private volatile boolean isIndexing = false;
     private ForkJoinPool forkJoinPool;
@@ -51,11 +54,14 @@ public class IndexingServiceImp implements IndexingService {
                     }
                     forkJoinPool.execute(() -> indexSite(site));
                 }
+                forkJoinPool.shutdown();
+                forkJoinPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
             } catch (Exception e) {
                 e.printStackTrace();
+            } finally {
+                isIndexing = false;
             }
         }).start();
-
         return true;
     }
 
@@ -194,7 +200,7 @@ public class IndexingServiceImp implements IndexingService {
 
         try {
             // 1. Удаляем старые данные
-            clearSiteData(site.getUrl());
+            siteCleanupService.clearSiteData(site.getUrl());
 
             // 2. Сохраняем новую запись в таблицу site
             saveSite(site.getUrl(), site.getName());

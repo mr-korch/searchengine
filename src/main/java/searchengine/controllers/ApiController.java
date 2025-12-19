@@ -78,7 +78,7 @@ public class ApiController {
         if (site != null && !indexingService.isSiteIndexed(site)) {
             return ResponseEntity.badRequest().body(new Response(false, "Указанная страница не найдена"));
         }
-        return ResponseEntity.ok(searchService.search(query, site));
+        return ResponseEntity.ok(searchService.search(query, site, offset, limit));
     }
 
 }

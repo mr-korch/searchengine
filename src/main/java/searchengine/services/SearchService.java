@@ -5,6 +5,6 @@ import searchengine.dto.responces.SearchResult;
 
 public interface SearchService {
 
-    SearchResponse search(String query, String site);
+    SearchResponse search(String query, String site, int offset, int limit);
 
 }

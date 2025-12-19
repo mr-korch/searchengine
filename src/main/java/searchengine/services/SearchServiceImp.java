@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.springframework.stereotype.Service;
 import searchengine.dto.responces.SearchResponse;
 import searchengine.dto.responces.SearchResult;
@@ -28,7 +29,7 @@ public class SearchServiceImp implements SearchService {
     private final IndexRepository indexRepository;
     private final Double FREQ_COEF = 0.75;
 
-    public SearchResponse search(String query, String site) {
+    public SearchResponse search(String query, String site, int offest, int limit) {
         List<String> lemmasFromQuery;
         try {
             lemmasFromQuery = LemmaFinder.getInstance().collectLemmas(query).keySet().stream().toList();
@@ -130,16 +131,30 @@ public class SearchServiceImp implements SearchService {
         // ВЫЧИСЛЕНИЕ ОТНОСИТЕЛЬНОЙ РЕЛЕВАНТОСТИ.
         List<SearchResult> results = new ArrayList<>();
         for (PageEntity pageEntity : matchingPages) {
+
             double absRel = absRelevanceMap.get(pageEntity);
-            double relRel = maxAbsRel == 0 ? 0 : absRel / maxAbsRel;
+            double relRel = absRel / maxAbsRel; // не может быть деления на 0
+
+            String title = "";
+            String content = pageEntity.getContent();
+
+            if (content != null && !content.isBlank()) {
+                title = Jsoup.parse(content).title();
+            }
+
             results.add(new SearchResult(
                     pageEntity.getSiteId().getUrl(),
                     pageEntity.getSiteId().getName(),
                     pageEntity.getPath(),
-                    SnippetBuilder.getSnippet(pageEntity.getContent(), query, sortedLemmas),
+                    title,
+                    SnippetBuilder.getSnippet(content, query, sortedLemmas),
                     relRel));
         }
+
         results.sort((a, b) -> Double.compare(b.getRelevance(), a.getRelevance()));
-        return new SearchResponse(true, results.size(), results);
+
+        int maxIndex = Math.min(results.size(), Math.max(limit, 0));
+        List<SearchResult> limitResult = results.subList(0, maxIndex);
+        return new SearchResponse(true, results.size(), limitResult);
     }
 }
