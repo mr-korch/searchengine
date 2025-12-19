@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import searchengine.dto.responces.Response;
 import searchengine.dto.statistics.StatisticsResponse;
+import searchengine.repositories.SiteRepository;
 import searchengine.services.IndexingService;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
@@ -19,6 +20,7 @@ public class ApiController {
 
     private final StatisticsService statisticsService;
     private final IndexingService indexingService;
+    private final SiteRepository siteRepository;
     private final SearchService searchService;
 
     @GetMapping("/statistics")

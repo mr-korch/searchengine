@@ -11,5 +11,5 @@ public class SearchResponse {
 
     private boolean result;
     private Integer count;
-    private List<SearchResult> searchResultList;
+    private List<SearchResult> data;
 }

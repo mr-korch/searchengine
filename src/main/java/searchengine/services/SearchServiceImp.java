@@ -26,111 +26,104 @@ public class SearchServiceImp implements SearchService {
     private final PageRepository pageRepository;
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
+    private final Double FREQ_COEF = 0.75;
 
     public SearchResponse search(String query, String site) {
-        List<String> lemmas;
+        List<String> lemmasFromQuery;
         try {
-            lemmas = LemmaFinder.getInstance()
-                    .collectLemmas(query)
-                    .keySet()
-                    .stream()
-                    .toList();
+            lemmasFromQuery = LemmaFinder.getInstance().collectLemmas(query).keySet().stream().toList();
         } catch (IOException e) {
             throw new RuntimeException("Ошибка получения лемм", e);
         }
 
-        long totalPages = (site == null)
-                ? pageRepository.count()
+        long totalPages = (site == null) ?
+                pageRepository.count()
                 : pageRepository.countBySiteId(siteRepository.findByUrl(site).orElseThrow());
 
-        long oftenLevel = (long) (totalPages * 0.65);
+        long oftenLevel = (long) (totalPages * FREQ_COEF);
         long freq;
         Map<String, Long> filteredLemmas = new HashMap<>();
+        SiteEntity siteEntity = null;
 
-        for (String lemma : lemmas) {
+        if (site != null) {
+            siteEntity = siteRepository.findByUrl(site).orElseThrow();
+        }
+
+        for (String lemma : lemmasFromQuery) {
             if (site == null) {
-                freq = lemmaRepository.sumFrequencyByLemma(lemma);
+                Long sum = lemmaRepository.sumFrequencyByLemma(lemma);
+                freq = (sum == null) ? 0 : sum;
             } else {
-                SiteEntity siteEntity = siteRepository.findByUrl(site).orElseThrow();
-                LemmaEntity lemmaEntity = lemmaRepository.findByLemmaAndSiteId(lemma, siteEntity).orElseThrow();
-                freq = lemmaEntity.getFrequency();
+                Optional<LemmaEntity> lemmaEntity = lemmaRepository.findByLemmaAndSiteId(lemma, siteEntity);
+                if (lemmaEntity.isEmpty()) {
+                    continue;
+                }
+                freq = lemmaEntity.get().getFrequency();
             }
             if (freq < oftenLevel) {
                 filteredLemmas.put(lemma, freq);
             }
         }
 
-        Map<String, Long> sortedLemmas = filteredLemmas.entrySet()
+        if (filteredLemmas.isEmpty()) {
+            return new SearchResponse(true, 0, List.of());
+        }
+
+        Map<String, Long> sortedLemmas = filteredLemmas
+                .entrySet()
                 .stream()
                 .sorted(Map.Entry.comparingByValue())
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue,
-                        (x, y) -> x,
-                        LinkedHashMap::new));
-
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (x, y) -> x, LinkedHashMap::new));
 
         List<PageEntity> matchingPages = new ArrayList<>();
         boolean firstLemma = true;
         for (Map.Entry<String, Long> lemma : sortedLemmas.entrySet()) {
-            LemmaEntity lemmaEntity;
+            Optional<LemmaEntity> lemmaEntity;
             if (site != null) {
-                SiteEntity siteEntity = siteRepository.findByUrl(site).orElseThrow();
-                lemmaEntity = lemmaRepository.findByLemmaAndSiteId(lemma.getKey(), siteEntity).orElseThrow();
+                lemmaEntity = lemmaRepository.findByLemmaAndSiteId(lemma.getKey(), siteEntity);
             } else {
-                lemmaEntity = lemmaRepository.findFirstByLemma(lemma.getKey()).orElse(null);
+                lemmaEntity = lemmaRepository.findFirstByLemma(lemma.getKey());
             }
-
-            if (lemmaEntity == null) {
+            if (lemmaEntity.isEmpty()) {
                 continue;
             }
 
             // НАХОДИМ СТРАНИЦЫ С ЭТОЙ ЛЕММОЙ
-            List<PageEntity> pagesWithLemma = indexRepository.findPagesByLemmaId(lemmaEntity);
-
+            List<PageEntity> pagesWithLemma = indexRepository.findPagesByLemmaId(lemmaEntity.get());
             if (firstLemma) {
-                // на первой лемме просто записываем все страницы
                 matchingPages.addAll(pagesWithLemma);
                 firstLemma = false;
             } else {
-                // на следующих – ищем пересечение со старыми
                 matchingPages.retainAll(pagesWithLemma);
             }
-
             if (matchingPages.isEmpty()) {
                 return new SearchResponse(true, 0, List.of());
             }
         }
 
-
         // РАСЧЕТ РЕЛЕВАНТНОСТИ
         Map<PageEntity, Double> absRelevanceMap = new HashMap<>();
         double maxAbsRel = 0;
-
         for (PageEntity pageEntity : matchingPages) {
             double absRel = 0;
             for (String lemmaText : sortedLemmas.keySet()) {
-                LemmaEntity lemmaEntity;
+                Optional<LemmaEntity> lemmaEntity;
                 if (site != null) {
-                    SiteEntity siteEntity = siteRepository.findByUrl(site).orElseThrow();
-                    lemmaEntity = lemmaRepository.findByLemmaAndSiteId(lemmaText, siteEntity).orElseThrow();
+                    lemmaEntity = lemmaRepository.findByLemmaAndSiteId(lemmaText, siteEntity);
                 } else {
-                    lemmaEntity = lemmaRepository.findFirstByLemma(lemmaText).orElse(null);
+                    lemmaEntity = lemmaRepository.findFirstByLemma(lemmaText);
                 }
-                if (lemmaEntity == null) {
+                if (lemmaEntity.isEmpty()) {
                     continue;
                 }
-
-                Optional<IndexEntity> indexOpt = indexRepository.findByPageIdAndLemmaId(pageEntity, lemmaEntity);
+                Optional<IndexEntity> indexOpt = indexRepository.findByPageIdAndLemmaId(pageEntity, lemmaEntity.get());
                 if (indexOpt.isPresent()) {
                     absRel += indexOpt.get().getRankValue();
                 }
-
-                absRelevanceMap.put(pageEntity, absRel);
-
-                if (absRel > maxAbsRel) {
-                    maxAbsRel = absRel;
-                }
+            }
+            absRelevanceMap.put(pageEntity, absRel);
+            if (absRel > maxAbsRel) {
+                maxAbsRel = absRel;
             }
         }
 
@@ -138,17 +131,15 @@ public class SearchServiceImp implements SearchService {
         List<SearchResult> results = new ArrayList<>();
         for (PageEntity pageEntity : matchingPages) {
             double absRel = absRelevanceMap.get(pageEntity);
-            double relRel = absRel / maxAbsRel;
+            double relRel = maxAbsRel == 0 ? 0 : absRel / maxAbsRel;
             results.add(new SearchResult(
                     pageEntity.getSiteId().getUrl(),
                     pageEntity.getSiteId().getName(),
                     pageEntity.getPath(),
-                    "",
-                    relRel
-                    ));
+                    SnippetBuilder.getSnippet(pageEntity.getContent(), query, sortedLemmas),
+                    relRel));
         }
-
-        results.sort((a,b) -> Double.compare(b.getRelevance(), a.getRelevance()));
+        results.sort((a, b) -> Double.compare(b.getRelevance(), a.getRelevance()));
         return new SearchResponse(true, results.size(), results);
     }
 }

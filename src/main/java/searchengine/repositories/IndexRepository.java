@@ -1,6 +1,9 @@
 package searchengine.repositories;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import searchengine.model.IndexEntity;
 import searchengine.model.LemmaEntity;
@@ -17,7 +20,8 @@ public interface IndexRepository extends JpaRepository<IndexEntity, Integer> {
 
     void deleteAllByPageId_SiteId(SiteEntity siteEntity);
 
-    List<PageEntity> findPagesByLemmaId(LemmaEntity lemma);
+    @Query("SELECT i.pageId FROM IndexEntity i WHERE i.lemmaId = :lemma")
+    List<PageEntity> findPagesByLemmaId(@Param("lemma") LemmaEntity lemma);
 
     Optional<IndexEntity> findByPageIdAndLemmaId(PageEntity pageEntity, LemmaEntity lemma);
 }

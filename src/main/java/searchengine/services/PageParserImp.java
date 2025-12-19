@@ -57,7 +57,7 @@ public class PageParserImp {
             pageEntity.setPath(path);
 
             try {
-                Thread.sleep(500 + (int) (Math.random() * 50));
+                Thread.sleep(1000 + (int) (Math.random() * 50));
                 Connection.Response response = Jsoup.connect(url)
                         .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
                         .referrer("https://www.google.com")
@@ -119,7 +119,7 @@ public class PageParserImp {
         }
     }
 
-    public void clearVisited(){
+    public void clearVisited() {
         visited.clear();
     }
 }

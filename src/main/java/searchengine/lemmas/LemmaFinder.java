@@ -10,15 +10,18 @@ import java.util.*;
 public class LemmaFinder {
 
     private final LuceneMorphology luceneMorphology;
+    private static LemmaFinder instance;
     private static final String[] particlesNames = new String[]{"МЕЖД", "ПРЕДЛ", "СОЮЗ"};
 
-    public static LemmaFinder getInstance() throws IOException {
-        LuceneMorphology morphology = new RussianLuceneMorphology();
-        return new LemmaFinder(morphology);
+    private LemmaFinder() throws IOException {
+        this.luceneMorphology = new RussianLuceneMorphology(); // тяжелая загрузка словаря
     }
 
-    private LemmaFinder(LuceneMorphology luceneMorphology) {
-        this.luceneMorphology = luceneMorphology;
+    public static synchronized LemmaFinder getInstance() throws IOException {
+        if (instance == null) {
+            instance = new LemmaFinder();
+        }
+        return instance;
     }
 
     /**
