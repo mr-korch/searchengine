@@ -24,7 +24,6 @@ public class SiteCleanupService {
         if (site == null) {
             return;
         }
-
         indexRepository.deleteAllByPageId_SiteId(site);
         lemmaRepository.deleteAllBySiteId(site);
         pageRepository.deleteAllBySiteId(site);

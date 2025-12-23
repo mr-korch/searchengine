@@ -16,7 +16,7 @@ public class LemmaEntity {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "site_id", nullable = false) // FK колонка
+    @JoinColumn(name = "site_id", nullable = false)
     private SiteEntity siteId;
 
     @Column(columnDefinition = "VARCHAR(255)")

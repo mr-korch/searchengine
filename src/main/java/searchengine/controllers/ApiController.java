@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import searchengine.dto.responces.Response;
 import searchengine.dto.statistics.StatisticsResponse;
-import searchengine.repositories.SiteRepository;
 import searchengine.services.IndexingService;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
@@ -20,7 +19,6 @@ public class ApiController {
 
     private final StatisticsService statisticsService;
     private final IndexingService indexingService;
-    private final SiteRepository siteRepository;
     private final SearchService searchService;
 
     @GetMapping("/statistics")
@@ -30,43 +28,34 @@ public class ApiController {
 
     @GetMapping("/startIndexing")
     public ResponseEntity<?> startIndexing() {
-
         boolean isStarted = indexingService.startIndexing();
-
         if (isStarted) {
-            return ResponseEntity.ok(new Response((true)));
-        } else {
-            return ResponseEntity.badRequest().body(new Response(false, "Индексация уже запущена"));
+            return ResponseEntity.ok(new Response(true));
         }
+        return ResponseEntity.badRequest().body(new Response(false, "Индексация уже запущена"));
     }
 
     @GetMapping("/stopIndexing")
     public ResponseEntity<?> stopIndexing() {
-
         boolean isStopped = indexingService.stopIndexing();
-
         if (isStopped) {
-            return ResponseEntity.ok(new Response((true)));
-        } else {
-            return ResponseEntity.badRequest().body(new Response(false, "Индексация не запущена"));
+            return ResponseEntity.ok(new Response(true));
         }
+        return ResponseEntity.badRequest().body(new Response(false, "Индексация не запущена"));
     }
 
     @GetMapping("/indexPage")
     public ResponseEntity<?> indexPage(@RequestParam String pageLink) {
-
         boolean isSucceeded = indexingService.indexPage(pageLink);
-
         if (isSucceeded) {
-            return ResponseEntity.ok(new Response((true)));
-        } else {
-            return ResponseEntity.badRequest().body(new Response(false, "Данная страница находится за пределами сайтов, \n" +
-                    "указанных в конфигурационном файле"));
+            return ResponseEntity.ok(new Response(true));
         }
+        return ResponseEntity.badRequest().body(new Response(false, "Данная страница находится за пределами сайтов, " +
+                "указанных в конфигурационном файле"));
     }
 
     @GetMapping("/search")
-    public ResponseEntity<?> searchByQuery(
+    public ResponseEntity<?> search(
             @RequestParam String query,
             @RequestParam(required = false) String site,
             @RequestParam(defaultValue = "0") Integer offset,
@@ -80,5 +69,4 @@ public class ApiController {
         }
         return ResponseEntity.ok(searchService.search(query, site, offset, limit));
     }
-
 }

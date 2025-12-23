@@ -16,11 +16,11 @@ public class IndexEntity {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "page_id", nullable = false) // FK колонка
+    @JoinColumn(name = "page_id", nullable = false)
     private PageEntity pageId;
 
     @ManyToOne
-    @JoinColumn(name = "lemma_id", nullable = false) // FK колонка
+    @JoinColumn(name = "lemma_id", nullable = false)
     private LemmaEntity lemmaId;
 
     @Column(name = "rank_value", nullable = false)

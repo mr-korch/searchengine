@@ -29,8 +29,10 @@ public class SnippetBuilder {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
         int pos = -1;
         for (String word : textWords) {
+
             Set<String> set = lemmaFinder.getLemmaSet(word);
             if (!set.isEmpty()) {
                 lemmaFromText = set.iterator().next();
@@ -42,7 +44,9 @@ public class SnippetBuilder {
                 }
             }
         }
-        if (pos == -1) return "";
+
+        if (pos == -1)
+            return "";
 
         int start = Math.max(0, pos - SNIPPET_RADIUS);
         int end = Math.min(text.length(), pos + SNIPPET_RADIUS);
@@ -51,7 +55,6 @@ public class SnippetBuilder {
         if (start > 100) snippet = "..." + snippet;
         if (end < text.length() - 200) snippet = snippet + "...";
 
-        // 5. Подсветка
         return highlightLemma(snippet, sortedLemmas.keySet());
     }
 

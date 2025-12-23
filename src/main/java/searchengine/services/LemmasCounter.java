@@ -1,6 +1,5 @@
 package searchengine.services;
 
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Component;
@@ -54,7 +53,6 @@ public class LemmasCounter {
                 indexEntity.setRankValue(pageCount);
                 indexRepository.save(indexEntity);
             }
-
 
         } catch (IOException e) {
             e.printStackTrace();

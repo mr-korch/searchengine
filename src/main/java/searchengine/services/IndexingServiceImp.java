@@ -38,7 +38,6 @@ public class IndexingServiceImp implements IndexingService {
 
     @Override
     public boolean startIndexing() {
-
         if (isIndexing) {
             return false;
         }
@@ -46,22 +45,7 @@ public class IndexingServiceImp implements IndexingService {
         forkJoinPool = new ForkJoinPool();
         pageParserImp.clearVisited();
 
-        new Thread(() -> {
-            try {
-                for (Site site : sitesList.getSites()) {
-                    if (!isIndexing) {
-                        break;
-                    }
-                    forkJoinPool.execute(() -> indexSite(site));
-                }
-                forkJoinPool.shutdown();
-                forkJoinPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                isIndexing = false;
-            }
-        }).start();
+        new Thread(this::runIndexing).start();
         return true;
     }
 
@@ -88,61 +72,115 @@ public class IndexingServiceImp implements IndexingService {
 
     @Override
     public boolean indexPage(String url) {
+
+        SiteEntity siteEntity = getSiteEntity(url);
+        if (siteEntity == null) {
+            return false;
+        }
+
+        String path = getPagePath(siteEntity.getUrl(), url);
+        PageEntity pageEntity = getPage(siteEntity, path);
+
+        return loadAndIndexPage(siteEntity, pageEntity, url);
+    }
+
+    @Override
+    public boolean isIndexing() {
+        return isIndexing;
+    }
+
+    @Override
+    public boolean isSiteIndexed(String url) {
+        return siteRepository.findByUrl(url)
+                .map(site -> site.getStatus() == StatusType.INDEXED)
+                .orElse(false);
+    }
+
+    private void runIndexing() {
+        try {
+            for (Site site : sitesList.getSites()) {
+                if (!isIndexing) {
+                    break;
+                }
+                forkJoinPool.execute(() -> indexSite(site));
+            }
+            forkJoinPool.shutdown();
+            forkJoinPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            isIndexing = false;
+        }
+    }
+
+    private SiteEntity getSiteEntity(String url) {
         Optional<SiteEntity> optionalSite = siteRepository.findAll()
                 .stream()
                 .filter(site -> url.startsWith(site.getUrl()))
                 .findFirst();
 
-        SiteEntity siteEntity;
-
-        if (optionalSite.isEmpty()) {
-            Optional<Site> optionalSiteConfig = sitesList.getSites()
+        if (optionalSite.isPresent()) {
+            return optionalSite.get();
+        } else {
+            Optional<Site> optionalConfigSite = sitesList.getSites()
                     .stream()
-                    .filter((site -> url.startsWith(site.getUrl())))
+                    .filter(site -> url.startsWith(site.getUrl()))
                     .findFirst();
 
-            if (optionalSiteConfig.isEmpty()) {
-                return false;
+            if (optionalConfigSite.isEmpty()) {
+                return null;
             }
 
-            Site configSite = optionalSiteConfig.get();
-            siteEntity = new SiteEntity();
-            siteEntity.setUrl(configSite.getUrl());
-            siteEntity.setName(configSite.getName());
+            Site site = optionalConfigSite.get();
+
+            SiteEntity siteEntity = new SiteEntity();
+            siteEntity.setUrl(site.getUrl());
+            siteEntity.setName(site.getName());
             siteEntity.setStatus(StatusType.INDEXING);
             siteEntity.setStatusTime(LocalDateTime.now());
-            siteRepository.save(siteEntity);
-        } else {
-            siteEntity = optionalSite.get();
+            return siteRepository.save(siteEntity);
         }
+    }
 
-        String path = url.replace(siteEntity.getUrl(), "");
-        if (path.isEmpty()) {
-            path = "/";
-        }
-        PageEntity pageEntity;
+    private String getPagePath(String siteUrl, String pageUrl) {
+        String path = pageUrl.replace(siteUrl, "");
+        return path.isEmpty() ? "/" : path;
+    }
+
+    private PageEntity getPage(SiteEntity siteEntity, String path) {
         Optional<PageEntity> optionalPage = pageRepository.findByPathAndSiteId(path, siteEntity);
-
-        if (optionalPage.isPresent()) {
-            pageEntity = optionalPage.get();
-            List<IndexEntity> indexEntityList = indexRepository.findAllByPageId(pageEntity);
-            for (IndexEntity index : indexEntityList) {
-                LemmaEntity lemma = index.getLemmaId();
-                lemma.setFrequency(lemma.getFrequency() - 1);
-                if (lemma.getFrequency() == 0) {
-                    lemmaRepository.delete(lemma);
-                } else {
-                    lemmaRepository.save(lemma);
-                }
-                indexRepository.delete(index);
-            }
-            pageRepository.delete(pageEntity);
-        } else {
-            pageEntity = new PageEntity();
+        if (optionalPage.isEmpty()) {
+            PageEntity pageEntity = new PageEntity();
             pageEntity.setSiteId(siteEntity);
             pageEntity.setPath(path);
+            return pageEntity;
         }
 
+        PageEntity pageEntity = optionalPage.get();
+
+        List<IndexEntity> indexEntityList = indexRepository.findAllByPageId(pageEntity);
+        for (IndexEntity index : indexEntityList) {
+            LemmaEntity lemma = index.getLemmaId();
+            lemma.setFrequency(lemma.getFrequency() - 1);
+
+            if (lemma.getFrequency() == 0) {
+                lemmaRepository.delete(lemma);
+            } else {
+                lemmaRepository.save(lemma);
+            }
+
+            indexRepository.delete(index);
+        }
+        pageRepository.delete(pageEntity);
+
+        PageEntity newPage = new PageEntity();
+        newPage.setSiteId(siteEntity);
+        newPage.setPath(path);
+
+        return newPage;
+    }
+
+    private boolean loadAndIndexPage(SiteEntity siteEntity, PageEntity pageEntity, String url) {
         Connection.Response response;
         try {
             response = Jsoup.connect(url)
@@ -155,43 +193,25 @@ public class IndexingServiceImp implements IndexingService {
             int statusCode = response.statusCode();
             pageEntity.setCode(statusCode);
 
-            Document document = null;
+            Document document;
             if (statusCode == 200) {
                 document = response.parse();
                 pageEntity.setContent(document.outerHtml());
+                pageRepository.save(pageEntity);
+                lemmasCounter.countLemmas(document, siteEntity, pageEntity);
             } else {
                 pageEntity.setContent("");
-            }
-
-            pageRepository.save(pageEntity);
-
-            if (statusCode == 200) {
-                lemmasCounter.countLemmas(document, siteEntity, pageEntity);
+                pageRepository.save(pageEntity);
             }
 
             return true;
+
         } catch (Exception e) {
-            // сетевые проблемы
-            System.err.println("Ошибка загрузки: " + url + " — " + e.getMessage());
             pageEntity.setCode(500);
             pageEntity.setContent("");
             pageRepository.save(pageEntity);
-            return false;
-        }
-    }
 
-    @Override
-    public boolean isIndexing() {
-        return isIndexing;
-    }
-
-    @Override
-    public boolean isSiteIndexed(String url) {
-        Optional<SiteEntity> optionalSite = siteRepository.findByUrl(url);
-        if (optionalSite.isEmpty()) {
             return false;
-        } else {
-            return optionalSite.get().getStatus() == StatusType.INDEXED;
         }
     }
 
@@ -199,68 +219,50 @@ public class IndexingServiceImp implements IndexingService {
         SiteEntity siteEntity = null;
 
         try {
-            // 1. Удаляем старые данные
             siteCleanupService.clearSiteData(site.getUrl());
-
-            // 2. Сохраняем новую запись в таблицу site
-            saveSite(site.getUrl(), site.getName());
-
-            // 3. Получаем сохранённую сущность
-            siteEntity = siteRepository.findByUrl(site.getUrl()).orElseThrow();
-
-            // 4. Индексируем страницу.
-            siteEntity.setStatus(StatusType.INDEXING);
+            siteEntity = createOrUpdateSite(site);
             pageParserImp.indexSitePages(siteEntity, forkJoinPool);
-
-            // ПРОВЕРЯТЬ IS INDEXING
-            // После успешного обхода ставим статус.
-            if (isIndexing) {
-                siteEntity.setStatus(StatusType.INDEXED);
-                siteEntity.setStatusTime(LocalDateTime.now());
-            } else {
-                siteEntity.setStatus(StatusType.FAILED);
-                siteEntity.setLastError("Индексация прервана пользователем");
-            }
-            siteRepository.save(siteEntity);
-
-
-        } catch (Exception e) {
-            // 5. Если ошибка — ставим FAILED и записываем текст ошибки
-            if (siteEntity != null) {
-                siteEntity.setStatus(StatusType.FAILED);
-                siteEntity.setLastError("Ошибка при индексации сайта" + siteEntity.getUrl());
-                siteEntity.setStatusTime(LocalDateTime.now());
-                siteRepository.save(siteEntity);
-            }
-            e.printStackTrace();
+            setSiteStatus(siteEntity);
+        } catch (Exception exception) {
+            handleError(siteEntity, exception);
         }
+
     }
 
-    private void clearSiteData(String siteUrl) {
-        Optional<SiteEntity> site = siteRepository.findByUrl(siteUrl);
-        if (site.isPresent()) {
-            SiteEntity foundSite = site.get();
-            indexRepository.deleteAllByPageId_SiteId(foundSite);
-            lemmaRepository.deleteAllBySiteId(foundSite);
-            pageRepository.deleteAllBySiteId(foundSite);
-            siteRepository.delete(foundSite);
-        }
-    }
-
-    private void saveSite(String siteUrl, String siteName) {
-        Optional<SiteEntity> site = siteRepository.findByUrl(siteUrl);
+    private SiteEntity createOrUpdateSite(Site site) {
         SiteEntity siteEntity;
-        if (site.isPresent()) {
-            siteEntity = site.get();
-            siteEntity.setStatus(StatusType.INDEXING);
-            siteEntity.setStatusTime(LocalDateTime.now());
+        Optional<SiteEntity> siteEntityOpt = siteRepository.findByUrl(site.getUrl());
+        if (siteEntityOpt.isPresent()) {
+            siteEntity = siteEntityOpt.get();
         } else {
             siteEntity = new SiteEntity();
-            siteEntity.setUrl(siteUrl);
-            siteEntity.setName(siteName);
-            siteEntity.setStatus(StatusType.INDEXING);
-            siteEntity.setStatusTime(LocalDateTime.now());
+            siteEntity.setUrl(site.getUrl());
+            siteEntity.setName(site.getName());
         }
+        siteEntity.setStatus(StatusType.INDEXING);
+        siteEntity.setStatusTime(LocalDateTime.now());
+
+        return siteRepository.save(siteEntity);
+    }
+
+    private void setSiteStatus(SiteEntity siteEntity) {
+        if (isIndexing) {
+            siteEntity.setStatus(StatusType.INDEXED);
+        } else {
+            siteEntity.setStatus(StatusType.FAILED);
+            siteEntity.setLastError("Индексация прервана пользователем");
+        }
+        siteEntity.setStatusTime(LocalDateTime.now());
         siteRepository.save(siteEntity);
+    }
+
+    private void handleError(SiteEntity siteEntity, Exception exception) {
+        if (siteEntity != null) {
+            siteEntity.setStatus(StatusType.FAILED);
+            siteEntity.setLastError("Ошибка при индексации сайта" + siteEntity.getUrl());
+            siteEntity.setStatusTime(LocalDateTime.now());
+            siteRepository.save(siteEntity);
+        }
+        exception.printStackTrace();
     }
 }

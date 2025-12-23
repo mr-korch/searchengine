@@ -111,13 +111,6 @@ public class LemmaFinder {
 
     private boolean isCorrectWordForm(String word) {
         return !word.isBlank();
-//        List<String> wordInfo = luceneMorphology.getMorphInfo(word);
-//        for (String morphInfo : wordInfo) {
-//            if (morphInfo.matches("[^а-яА-Я\\s]")) {
-//                return false;
-//            }
-//        }
-//        return true;
     }
 }
 
