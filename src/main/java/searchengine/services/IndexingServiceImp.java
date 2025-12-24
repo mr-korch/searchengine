@@ -2,6 +2,7 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
+import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
@@ -206,11 +207,16 @@ public class IndexingServiceImp implements IndexingService {
 
             return true;
 
+        } catch (HttpStatusException e) {
+            pageEntity.setCode(e.getStatusCode());
+            pageEntity.setContent("");
+            pageRepository.save(pageEntity);
+            return false;
+
         } catch (Exception e) {
             pageEntity.setCode(500);
             pageEntity.setContent("");
             pageRepository.save(pageEntity);
-
             return false;
         }
     }

@@ -2,6 +2,7 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
+import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -11,7 +12,6 @@ import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.repositories.PageRepository;
 
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,15 +94,12 @@ public class PageParserImp {
                         action.join();
                     }
                 }
-            } catch (IOException e) {
-                // сетевые проблемы
+            } catch (HttpStatusException e) {
                 System.err.println("Ошибка загрузки: " + url + " — " + e.getMessage());
-                pageEntity.setCode(500);
+                pageEntity.setCode(e.getStatusCode());
                 pageEntity.setContent("");
                 savePageAfterError(pageEntity);
-
             } catch (Exception e) {
-                // любые другие
                 System.err.println("Ошибка при обработке страницы: " + url + " — " + e.getMessage());
                 pageEntity.setCode(500);
                 pageEntity.setContent("");

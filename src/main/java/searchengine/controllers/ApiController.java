@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import searchengine.dto.responces.Response;
 import searchengine.dto.statistics.StatisticsResponse;
+import searchengine.exceptions.BadRequestException;
+import searchengine.exceptions.NotFoundException;
 import searchengine.services.IndexingService;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
@@ -32,7 +34,7 @@ public class ApiController {
         if (isStarted) {
             return ResponseEntity.ok(new Response(true));
         }
-        return ResponseEntity.badRequest().body(new Response(false, "Индексация уже запущена"));
+        throw new BadRequestException("Индексация уже запущена");
     }
 
     @GetMapping("/stopIndexing")
@@ -41,7 +43,7 @@ public class ApiController {
         if (isStopped) {
             return ResponseEntity.ok(new Response(true));
         }
-        return ResponseEntity.badRequest().body(new Response(false, "Индексация не запущена"));
+        throw new BadRequestException("Индексация не запущена");
     }
 
     @GetMapping("/indexPage")
@@ -50,8 +52,7 @@ public class ApiController {
         if (isSucceeded) {
             return ResponseEntity.ok(new Response(true));
         }
-        return ResponseEntity.badRequest().body(new Response(false, "Данная страница находится за пределами сайтов, " +
-                "указанных в конфигурационном файле"));
+        throw new BadRequestException("Данная страница находится за пределами сайтов, указанных в конфигурации");
     }
 
     @GetMapping("/search")
@@ -62,10 +63,10 @@ public class ApiController {
             @RequestParam(defaultValue = "20") Integer limit) {
 
         if (query == null || query.isBlank()) {
-            return ResponseEntity.badRequest().body(new Response(false, "Задан пустой поисковый запрос"));
+            throw new BadRequestException("Задан пустой поисковый запрос");
         }
         if (site != null && !indexingService.isSiteIndexed(site)) {
-            return ResponseEntity.badRequest().body(new Response(false, "Указанная страница не найдена"));
+            throw new NotFoundException("Указанная страница не найдена");
         }
         return ResponseEntity.ok(searchService.search(query, site, offset, limit));
     }

@@ -6,6 +6,8 @@ indexing-settings:
       name: Плэйбек.ру
     - url: https://www.svetlovka.ru/
       name: Светловка
+    - url: https://www.ipfran.ru/
+      name: ИПФРАН
 
 server:
   port: 8080
